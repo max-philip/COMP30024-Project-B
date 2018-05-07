@@ -40,7 +40,7 @@ white_poss_placements = []
 for i in range(8):
     for j in range(6):
         pos = (i, j)
-        if (pos != (0, 0)) and (pos != (7, 0)):
+        if ((pos != (0, 0)) and (pos != (7, 0))):
             white_poss_placements.append(pos)
 
 black_poss_placements = []
@@ -59,7 +59,7 @@ for i in range(1, 7):
     for j in range(0, 2):
         white_places.append((i,j))
 
-print(white_places)
+#print(white_places)
 
 black_places = []
 for i in range(1,7):
@@ -67,6 +67,23 @@ for i in range(1,7):
         black_places.append((i,j))
 # black_places.append((6,6))
 # black_places.append((7,3))
+
+# evaluation array adapted from chess wiki of Queen evaluation array
+pieceEval  = [ \
+    [ -10.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -10.0], \
+    [ -1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -1.0], \
+    [ -1.0,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0], \
+    [ -0.5,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -0.5], \
+    [  0.0,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -0.5], \
+    [ -1.0,  0.5,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0], \
+    [ -1.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0, -1.0], \
+    [ -10.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -10.0] \
+]
+
+
+
+
+
 
 
 
@@ -100,11 +117,16 @@ class Player:
         self.enemy_pieces = self.board.white_pieces if self.type == BLACK \
         else self.board.black_pieces
 
+        print(self.board)
+
     def action(self, turns):
 
         # Not in play mode while in the placing stage
+
         if self.placeMode:
             if turns < 24:
+                #copy_board = self.board
+                value, pos = self.miniMax(self.board.grid, 2, True)
                 if self.type == WHITE:
                     action = white_places[turns//2]
                     self.board.place_piece(action, self.type)
@@ -120,6 +142,7 @@ class Player:
             action = self.bestmove(self.type, turns)
 
             for piece in self.my_pieces:
+
                 if piece.pos == action[0] : piece.makemove(action[1])
 
         return action
@@ -141,7 +164,8 @@ class Player:
         return self.evalstate()
 
     def evalstate(self):
-        best_score = float('inf')       # THIS IS AIDS
+        best_score = float('inf')
+        best_move = -1     # THIS IS AIDS
         for piece in self.my_pieces:
             if self.euclidean(piece):
                 move, score = self.euclidean(piece)
@@ -184,6 +208,66 @@ class Player:
     def euclidean_distance(self, pos1, pos2):
         return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
 
+
+    def getBranches(self, boardState, player):
+
+        branch = []
+        count = 0
+
+        """
+
+        want to iterate throguh every position
+        adding the new posotion only
+        then append the new board ot the branchs array """
+
+
+        # problem after updating the boardState is altered
+        for position in boardState:
+
+            if boardState[position] == EMPTY:
+
+                copyState = boardState.copy()
+                copyState[position] = player
+                branch.append(copyState)
+
+        return branch, position
+
+    def getHeuristic(self, boardState):
+
+        return 1
+
+
+    def miniMax(self, boardState, depth, maximizingPlayer):
+
+        if depth == 0: #cannot have terminal node since only replacing
+            return self.getHeuristic(boardState)
+
+
+        if maximizingPlayer:  # you are the current
+
+            bestValue = -1e500
+            branch, pos = self.getBranches(boardState, self.enemy_type)
+
+            for child in branch:
+                print(child)
+                currValue, pos = self.miniMax(child, depth-1, False)
+
+                if currValue > bestValue:
+                    bestValue = currValue
+            return bestValue, pos
+
+        else:   # opposition - minimising players
+
+            bestValue = 1e500
+            branch, pos = self.getBranches(boardState, self.type)
+
+            for child in branch:
+                print(child)
+                currValue, pos = self.miniMax(child, depth-1, True)
+                if currValue < bestValue:
+                    bestValue = currValue
+            return bestValue, pos
+
     def update(self, action):
         if type(action[0]) is int:
             self.board.place_piece(action, self.enemy_type)
@@ -203,7 +287,6 @@ class Board:
         an initial board configuration (`data`).
         """
         self.size = len(data)
-
         self.grid = {}
         self.white_pieces = []
         self.black_pieces = []
@@ -237,6 +320,7 @@ class Board:
         self.black_pieces.append(new_piece)
         self.grid[pos] = type
 
+
     # NEED TO COMPLETE
     def shrink(self, turns):
         if turns == 128:
@@ -246,6 +330,10 @@ class Board:
         if turns == 192:
             toDels = [1, 6]
             newCorners = [(2, 2), (5, 2), (2, 5), (5, 5)]
+
+
+
+
 
 class Piece:
     """
