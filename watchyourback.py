@@ -17,8 +17,8 @@ April 2018
 # HELPERS
 
 WHITE, BLACK, CORNER, EMPTY = ['O','@','X','-']
-ENEMIES = {WHITE: {BLACK, CORNER}, BLACK: {WHITE, CORNER}}
-FRIENDS = {WHITE: {WHITE, CORNER}, BLACK: {BLACK, CORNER}}
+ENEMIES = {WHITE: {BLACK, CORNER}, BLACK: {WHITE, CORNER}, CORNER: {}, EMPTY: {}}
+FRIENDS = {WHITE: {WHITE, CORNER}, BLACK: {BLACK, CORNER}, CORNER: {}, EMPTY: {}}
 
 FULL_EMPTY = \
 [['X','-','-','-','-','-','-','X'], \
@@ -53,13 +53,12 @@ for i in range(8):
 
 # hard-coded testing
 white_places = []
-# for i in range(3,7):
-#     for j in range(1,4):
-for i in range(1, 7):
-    for j in range(0, 2):
+for i in range(3,7):
+    for j in range(1,4):
+# for i in range(1, 7):
+#     for j in range(0, 2):
         white_places.append((i,j))
 
-print(white_places)
 
 black_places = []
 for i in range(1,7):
@@ -91,16 +90,18 @@ def step(position, direction):
 class Player:
     def __init__(self, colour):
         self.type = WHITE if colour == "white" else BLACK
-        self.enemy_type = BLACK if colour == "white" else WHITE
-        self.board = Board(FULL_EMPTY)
+        self.enemy = BLACK if colour == "white" else WHITE
+        self.board = Board(FULL_EMPTY, self.type)
         self.placeMode = True
 
-        self.my_pieces = self.board.white_pieces if self.type == WHITE \
-        else self.board.black_pieces
-        self.enemy_pieces = self.board.white_pieces if self.type == BLACK \
-        else self.board.black_pieces
+        # self.my_pieces = self.board.white_pieces if self.type == WHITE \
+        # else self.board.black_pieces
+        # self.enemy_pieces = self.board.white_pieces if self.type == BLACK \
+        # else self.board.black_pieces
 
     def action(self, turns):
+
+        print(self.board)
 
         # Not in play mode while in the placing stage
         if self.placeMode:
@@ -119,9 +120,10 @@ class Player:
         else:
             action = self.bestmove(self.type, turns)
 
-            for piece in self.my_pieces:
-                if piece.pos == action[0] : piece.makemove(action[1])
+            self.board.makemove(action[0], action[1])
 
+        print(self.type, action)
+        print(self.board)
         return action
 
     def bestmove(self, type, turns):
@@ -142,54 +144,62 @@ class Player:
 
     def evalstate(self):
         best_score = float('inf')       # THIS IS AIDS
-        for piece in self.my_pieces:
-            if self.euclidean(piece):
-                move, score = self.euclidean(piece)
-            else:
-                continue
-            if score < best_score:
-                best_score = score
-                best_move = move
+        #for piece in self.my_pieces:
+        best_move = ()
+        for loc in self.board.grid:
+            if self.board.grid[loc] == self.type:
+                if self.board.moves(loc):
+                    move, score = self.euclidean(loc)
+                    if score < best_score:
+                        best_score = score
+                        best_move = move
 
         return best_move
 
-    def euclidean(self, piece):
+
+    def euclidean(self, loc):
         min_score = float('inf')           # THIS IS AIDS
-        for newpos in piece.moves():
-            oldpos = piece.pos
-            eliminated_pieces = piece.makemove(newpos)
+        # print(loc, self.board.moves(loc))
+        for newpos in self.board.moves(loc):
+            oldtype = self.board.grid[loc]
+            eliminated_pieces = self.board.makemove(loc, newpos)
 
             # calculate euclidean score of current board
             score = 0
-            for player in self.my_pieces:
-                for enemy in self.enemy_pieces:
-                    score += self.euclidean_distance(player.pos, enemy.pos)
 
-            piece.undomove(oldpos, eliminated_pieces)
+            players = []
+            enemies = []
+            for pos in self.board.grid:
+                if self.board.grid[pos] == self.type:
+                    players.append(pos)
+                elif self.board.grid[pos] == self.enemy:
+                    enemies.append(pos)
+
+            for i in players:
+                for j in enemies:
+                    score += self.euclidean_distance(i, j)
+
+            self.board.undomove(loc, oldtype, newpos, eliminated_pieces)
 
             if score < min_score:
                 min_score = score
                 best_move = newpos
-        if piece.moves():
-            return ((piece.pos, best_move), min_score)
+
+        if self.board.moves(loc):
+            return ((loc, best_move), min_score)
         else:
             return None
-    # def euclidean(self, piece):
-    #     print(piece.moves())
-    #     oldpos = piece.pos
-    #     eliminated_pieces = piece.makemove(piece.moves()[0])
-    #     piece.undomove(oldpos, eliminated_pieces)
-    #     return ((piece.pos, piece.moves()[0]), self.euclidean_distance(piece.pos, piece.moves()[0]))
+
 
     def euclidean_distance(self, pos1, pos2):
         return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
 
     def update(self, action):
         if type(action[0]) is int:
-            self.board.place_piece(action, self.enemy_type)
+            self.board.place_piece(action, self.enemy)
         else:
-            for p in self.enemy_pieces:
-                if p.pos == action[0] : p.makemove(action[1])
+            self.board.makemove(action[0], action[1])
+
 
 class Board:
     """
@@ -197,23 +207,18 @@ class Board:
     on the board (in `whites` and `blacks` lists) and the state of each board
     square (in `grid` dictionary, indexed by `(x, y)` tuples).
     """
-    def __init__(self, data):
+    def __init__(self, data, player):
         """
         Create a new board based on a nested list of characters representing
         an initial board configuration (`data`).
         """
         self.size = len(data)
-
+        self.player = player
         self.grid = {}
-        self.white_pieces = []
-        self.black_pieces = []
+
         for y, row in enumerate(data):
             for x, char in enumerate(row):
                 self.grid[x, y] = char
-                if char == WHITE:
-                    self.white_pieces.append(Piece(WHITE, (x, y), self))
-                if char == BLACK:
-                    self.black_pieces.append(Piece(BLACK, (x, y), self))
 
     def __str__(self):
         """Compute a string representation of the board's current state."""
@@ -227,14 +232,13 @@ class Board:
         could be improved by separately keeping track of which piece is at
         each position.
         """
-        for piece in self.black_pieces + self.white_pieces:
-            if piece.alive and piece.pos == square:
-                return piece
+        if square in self.grid:
+            return self.grid[square]
 
     def place_piece(self, pos, type):
-        new_piece = Piece(type, pos, self)
-        self.white_pieces.append(new_piece) if type == WHITE else \
-        self.black_pieces.append(new_piece)
+        #new_piece = Piece(type, pos, self)
+        #self.white_pieces.append(new_piece) if type == WHITE else \
+        #self.black_pieces.append(new_piece)
         self.grid[pos] = type
 
     # NEED TO COMPLETE
@@ -247,37 +251,7 @@ class Board:
             toDels = [1, 6]
             newCorners = [(2, 2), (5, 2), (2, 5), (5, 5)]
 
-class Piece:
-    """
-    A class to represent a Watch Your Back! piece somewhere on a game board.
-
-    This piece tracks its type (BLACK or WHITE, in `player`) and its current
-    position (an (x, y) tuple, in `pos`). It also keeps track of whether or not
-    it is currently on the board (Boolean value, in `alive`).
-
-    Contains methods for analysing or changing the piece's current position.
-    """
-    def __init__(self, type, pos, board):
-        """
-        Create a new piece for a particular player (BLACK or WHITE) currently
-        at a particular position `pos` on board `board`. This piece starts out
-        in the `alive = True` state and changes to `alive = False` when it is
-        eliminated.
-        """
-        self.type = type
-        self.pos = pos
-        self.board = board
-        self.alive = True
-    def __str__(self):
-        return f"{self.type} at {self.pos}"
-        #return str(self.type) + " at " + str(self.pos)
-    def __repr__(self):
-        return f"Piece({self.type}, {self.pos})"
-        #return "Piece( " + str(self.type) + ", " + str(self.pos) + ")"
-    def __eq__(self, other):
-        return (self.type, self.pos) == (other.player, other.pos)
-
-    def moves(self):
+    def moves(self, pos):
         """
         Compute and return a list of the available moves for this piece based
         on the current board state.
@@ -288,20 +262,21 @@ class Piece:
         possible_moves = []
         for direction in DIRECTIONS:
             # a normal move to an adjacent square?
-            adjacent_square = step(self.pos, direction)
-            if adjacent_square in self.board.grid:
-                if self.board.grid[adjacent_square] == EMPTY:
-                    possible_moves.append(adjacent_square)
-                    continue # a jump move is not possible in this direction
+            adjacent_square = step(pos, direction)
+            # if adjacent_square in self.board.grid:
+            #     print((adjacent_square, self.board.grid[adjacent_square].type))
+
+            if self.find_piece(adjacent_square) == EMPTY:
+                possible_moves.append(adjacent_square)
+                continue # a jump move is not possible in this direction
 
             # if not, how about a jump move to the opposite square?
             opposite_square = step(adjacent_square, direction)
-            if opposite_square in self.board.grid:
-                if self.board.grid[opposite_square] == EMPTY:
-                    possible_moves.append(opposite_square)
+            if self.find_piece(opposite_square) == EMPTY:
+                possible_moves.append(opposite_square)
         return possible_moves
 
-    def makemove(self, newpos):
+    def makemove(self, oldpos, newpos):
         """
         Carry out a move from this piece's current position to the position
         `newpos` (a position from the list returned from the `moves()` method)
@@ -313,42 +288,46 @@ class Piece:
 
         Do not call with method on pieces with `alive = False`.
         """
-        # make the move
-        oldpos = self.pos
-        self.pos = newpos
-        self.board.grid[oldpos] = EMPTY
-        self.board.grid[newpos] = self.type
 
         # eliminate any newly surrounded pieces
         eliminated_pieces = []
 
+        # make the move
+        my_type = self.grid[oldpos]
+        self.grid[oldpos] = EMPTY
+        self.grid[newpos] = my_type
+
+
         # check adjacent squares: did this move eliminate anyone?
         for direction in DIRECTIONS:
-            adjacent_square = step(self.pos, direction)
+            adjacent_square = step(newpos, direction)
             opposite_square = step(adjacent_square, direction)
-            if opposite_square in self.board.grid:
-                if self.board.grid[adjacent_square] in ENEMIES[self.type] \
-                and self.board.grid[opposite_square] in FRIENDS[self.type]:
-                    eliminated_piece = self.board.find_piece(adjacent_square)
-                    eliminated_piece.eliminate()
-                    eliminated_pieces.append(eliminated_piece)
+            if self.find_piece(adjacent_square) in ENEMIES[my_type] \
+            and self.find_piece(opposite_square) in FRIENDS[my_type]:
+
+                eliminated_piece = (self.find_piece(adjacent_square), adjacent_square)
+                self.grid[adjacent_square] = EMPTY
+                eliminated_pieces.append(eliminated_piece)
+                #eliminated_pieces.append(eliminated_piece)
 
         # check horizontally and vertically: does the piece itself get
         # eliminated?
         for forward, backward in [(UP, DOWN), (LEFT, RIGHT)]:
-            front_square = step(self.pos, forward)
-            back_square  = step(self.pos, backward)
-            if front_square in self.board.grid \
-            and back_square in self.board.grid:
-                if self.board.grid[front_square] in ENEMIES[self.type] \
-                and self.board.grid[back_square] in ENEMIES[self.type]:
-                    self.eliminate()
-                    eliminated_pieces.append(self)
-                    break
+            front_square = step(newpos, forward)
+            back_square  = step(newpos, backward)
+            if self.find_piece(front_square) in ENEMIES[my_type] \
+            and self.find_piece(back_square) in ENEMIES[my_type]:
+                eliminated_piece = (my_type, newpos)
+                self.grid[newpos] = EMPTY
+                eliminated_pieces.append(eliminated_piece)
+                break
+
+        #eliminated_pieces.append((oldtype, oldpos))
 
         return eliminated_pieces
 
-    def undomove(self, oldpos, eliminated_pieces):
+    def undomove(self, oldpos, oldtype, newpos, eliminated_pieces):
+
         """
         Roll back a move for this piece to its previous position `oldpos`,
         restoring the pieces it had eliminated `eliminated_pieces` (a list as
@@ -361,27 +340,10 @@ class Piece:
         undoing the move that eliminated this piece.
         """
         # put back the pieces that were eliminated
-        for piece in eliminated_pieces:
-            piece.resurrect()
+        for data in eliminated_pieces:
+            self.grid[data[1]] = data[0]
+
 
         # undo the move itself
-        newpos = self.pos
-        self.pos = oldpos
-        self.board.grid[newpos] = EMPTY
-        self.board.grid[oldpos] = self.type
-
-    def eliminate(self):
-        """
-        Set a piece's state to `alive = False` and remove it from the board
-        For internal use only.
-        """
-        self.alive = False
-        self.board.grid[self.pos] = EMPTY
-
-    def resurrect(self):
-        """
-        Set a piece's state to `alive = True` and restore it to the board
-        For internal use only.
-        """
-        self.alive = True
-        self.board.grid[self.pos] = self.type
+        self.grid[newpos] = EMPTY
+        self.grid[oldpos] = oldtype
