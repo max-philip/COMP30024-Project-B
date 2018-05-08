@@ -137,13 +137,15 @@ class Player:
                 #copy_board = self.board
 
                 if self.type == WHITE:
-                    value, newPos = self.miniMax(self.board.grid, 2, True, (-1,-1))
-                    action = newPos
+                    value, boardState = self.miniMax(self.board.grid, 2, True)
+                    #print(boardState)
+                    action = white_places[turns//2]
                     print(value)
                     self.board.place_piece(action, self.type)
                 else:
-                    value, newPos = self.miniMax(self.board.grid, 2, False, (-1,-1))
-                    action = newPos
+                    value, boardState = self.miniMax(self.board.grid, 2, False)
+                    #print(boardState)
+                    action = black_places[turns//2]
                     print(value)
                     self.board.place_piece(action, self.type)
             # Switch to move mode if its going first or second
@@ -245,29 +247,31 @@ class Player:
 
         return branch, positions
 
-    def getHeuristic(self, boardState, newPos):
+    def getHeuristic(self, boardState):
 
         var = random.randint(0,5)
         # rand = [0, 2, 4, 5, 7, 2, -1, 12, -7]
 
-        i = newPos[0]
-        j = newPos[1]
+        #i = newPos[0]
+        #j = newPos[1]
 
         if (self.type == WHITE):
             type = 1
         else:
             type = -1
 
-        num = (float(var) + 10*(self.playerEval[i][j]))
+        num = float(var)#(self.playerEval[i][j]))
+
+        print(boardState)
 
         return num
 
 
-    def miniMax(self, boardState, depth, maximizingPlayer, newPos):
+    def miniMax(self, boardState, depth, maximizingPlayer):
 
         if depth == 0: #cannot have terminal node since only replacing
 
-            return self.getHeuristic(boardState, newPos), newPos
+            return self.getHeuristic(boardState), boardState
 
         if maximizingPlayer:  # you are the current
 
@@ -276,7 +280,7 @@ class Player:
             i = 0
 
             for child in branch:
-                currValue, newPos = self.miniMax(child, depth-1, False, newPos)
+                currValue, boardState = self.miniMax(child, depth-1, False)
                 #print(str(currValue) + ' ' + str(bestValue))
                 if currValue > bestValue:
 
@@ -287,7 +291,7 @@ class Player:
                     #print(" \n" + str(currValue) + ' ' + str(bestValue) + " \n")
                 i += 1
             #print("\n best value" + str(bestValue) + "\n")
-            return bestValue, newPos
+            return bestValue, boardState
 
         else:   # opposition - minimising players
 
@@ -295,12 +299,12 @@ class Player:
             branch, positions = self.getBranches(boardState, self.type)
             i = 0
             for child in branch:
-                currValue, newPos = self.miniMax(child, depth-1, True, newPos)
+                currValue, boardState = self.miniMax(child, depth-1, True)
                 if currValue < bestValue:
                     bestValue = currValue
                     newPos = positions[i]
                 i += 1
-            return bestValue, newPos
+            return bestValue, boardState
 
     def update(self, action):
         if type(action[0]) is int:
