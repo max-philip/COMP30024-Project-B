@@ -72,26 +72,25 @@ for i in range(1,7):
 
 # evaluation array adapted from chess wiki of Queen evaluation array
 EVAL_WHITE  = [ \
-    [ -10.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -10.0], \
-    [ -1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -1.0], \
-    [ -1.0,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0], \
-    [ -0.5,  0.0,  0.5,  1.5,  1.5,  0.5,  0.0, -0.5], \
-    [  0.0,  0.0,  0.5,  1.5,  1.5,  0.5,  0.0, -0.5], \
-    [ -1.0,  0.5,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0], \
-    [ -10.0,  -10.0, -10.0,  -10.0,  -10.0,  -10.0,  -10.0, -10.0], \
-    [ -10.0,  -10.0, -10.0,  -10.0,  -10.0,  -10.0,  -10.0, -10.0], \
+    [ 0.0001, 1, 1, 1, 1, 1, 1, 0.0001], \
+    [ 1,  5,  5,  5,  5,  5,  5, 1], \
+    [ 1,  5,  10,  10,  10,  10,  5, 1], \
+    [ 1,  5,  10,  15,  15,  10,  5, 1], \
+    [ 1,  5,  10,  10,  10,  10,  5, 1], \
+    [ 1,  5,  5,  5,  5,  5,  5, 1], \
+    [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
+    [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
 ]
 
 EVAL_BLACK = [ \
-    [ -10.0,  -10.0, -10.0,  -10.0,  -10.0,  -10.0,  -10.0, -10.0], \
-    [ -10.0,  -10.0, -10.0,  -10.0,  -10.0,  -10.0,  -10.0, -10.0], \
-    [ -1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -1.0], \
-    [ -1.0,  0.0,  0.5,  1.5,  1.5,  0.5,  0.0, -1.0], \
-    [ -0.5,  0.0,  0.5,  1.5,  1.5,  0.5,  0.0, -0.5], \
-    [  0.0,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -0.5], \
-    [ -1.0,  0.5,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0], \
-    [ -1.0,  0.5,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0], \
-    [ -10.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -10.0], \
+    [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
+    [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
+    [ 1,  5,  5,  5,  5,  5,  5, 1], \
+    [ 1,  5,  10,  10,  10,  10,  5, 1], \
+    [ 1,  5,  10,  15,  15,  10,  5, 1], \
+    [ 1,  5,  10,  10,  10,  10,  5, 1], \
+    [ 1,  5,  5,  5,  5,  5,  5, 1], \
+    [ 0.0001, 1, 1, 1, 1, 1, 1, 0.0001], \
 ]
 
 
@@ -120,6 +119,7 @@ class Player:
         self.board = Board(FULL_EMPTY)
         self.placeMode = True
         self.playerEval = EVAL_WHITE if colour == "white" else EVAL_BLACK
+        self.enemyEval = EVAL_BLACK if colour == "white" else EVAL_WHITE
 
         self.my_pieces = self.board.white_pieces if self.type == WHITE \
         else self.board.black_pieces
@@ -135,18 +135,27 @@ class Player:
             if turns < 24:
 
                 #copy_board = self.board
-
                 if self.type == WHITE:
-                    value, boardState = self.miniMax(self.board.grid, 2, True)
-                    #print(boardState)
-                    action = white_places[turns//2]
-                    print(value)
+                    value = self.miniMax(self.board.grid, 2, True, (0,0))
+
+                    print("\n " + self.type + " " + str(value[0]) + " \n" + str(value[1]) + '\n') # should always return a value of 5 at the end
+
+                    if (value[1][0][1] == self.type):
+                        action = value[1][0][0]
+                    else:
+                        action = value[1][1][0]
+                    #action = white_places[turns//2]
+
                     self.board.place_piece(action, self.type)
                 else:
-                    value, boardState = self.miniMax(self.board.grid, 2, False)
-                    #print(boardState)
-                    action = black_places[turns//2]
-                    print(value)
+                    value = self.miniMax(self.board.grid, 2, False, (0,0))
+
+                    print("\n " + self.type + " " + str(value[0]) + " \n" + str(value[1]) + '\n')
+                    if (value[1][0][1] == self.type):
+                        action = value[1][0][0]
+                    else:
+                        action = value[1][1][0]
+
                     self.board.place_piece(action, self.type)
             # Switch to move mode if its going first or second
             if turns == 22 or turns == 23:
@@ -213,98 +222,130 @@ class Player:
             return ((piece.pos, best_move), min_score)
         else:
             return None
-    # def euclidean(self, piece):
-    #     print(piece.moves())
-    #     oldpos = piece.pos
-    #     eliminated_pieces = piece.makemove(piece.moves()[0])
-    #     piece.undomove(oldpos, eliminated_pieces)
-    #     return ((piece.pos, piece.moves()[0]), self.euclidean_distance(piece.pos, piece.moves()[0]))
 
     def euclidean_distance(self, pos1, pos2):
         return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
 
-
-    def getBranches(self, boardState, player):
+    def getBranches(self, boardState, maximizingPlayer):
 
         branch = []
         positions = []
         i = 0
+        num = 0
 
-        # create 60 new dictionaries (max amount of empty positions available)
+        for count in (boardState):
+            if boardState[count] == EMPTY:
+                num += 1
+
+        # create (max amount of empty positions available) new dictionaries
         sectionsDict = []
-        for var in range(60):
+        for var in range(num):
            sectionsDict.append(dict())
 
-        # add new dictionary for all the one changed values
+        # add to new dictionary for all possible new spots
         for position in boardState:
 
             if boardState[position] == EMPTY:
 
                 sectionsDict[i] = boardState.copy()
-                sectionsDict[i][position] = player
+                if maximizingPlayer:
+                    sectionsDict[i][position] = self.type
+                else:
+                    sectionsDict[i][position] = self.enemy_type
                 positions.append(position)
                 branch.append(sectionsDict[i])
 
         return branch, positions
 
-    def getHeuristic(self, boardState):
+    def compareBoards(self, boardState):
 
-        var = random.randint(0,5)
-        # rand = [0, 2, 4, 5, 7, 2, -1, 12, -7]
+        newPos = []
+        for pos in boardState:
+            if boardState[pos] != self.board.grid[pos]:
+                newPos.append((pos, boardState[pos])) # e.g. ((2,3), '@')
 
-        #i = newPos[0]
-        #j = newPos[1]
+        return newPos
 
-        if (self.type == WHITE):
-            type = 1
-        else:
+    def getHeuristic(self, boardState, maximizingPlayer):
+
+        var = random.randint(1,4) # determines how much additional randomness
+        newPos = self.compareBoards(boardState)
+
+        if (maximizingPlayer): #this player
             type = -1
 
-        num = float(var)#(self.playerEval[i][j]))
+            if (newPos[0][1] == self.type):
+                i = newPos[0][0][0]
+                j = newPos[0][0][1]
+            else:
+                i = newPos[1][0][0]
+                j = newPos[1][0][1]
 
-        print(boardState)
+            if (j > 5):
+                var *= 100
+            else:
+                var /= float(self.playerEval[i][j])
 
-        return num
+        else:
+            type = 1
+
+            if (newPos[0][1] == self.enemy_type):
+                i = newPos[1][0][0]
+                j = newPos[1][0][1]
+            else:
+                i = newPos[0][0][0]
+                j = newPos[0][0][1]
+
+            if (j < 2):
+                var /= 100
+            else:
+                var *= float(self.enemyEval[i][j])
 
 
-    def miniMax(self, boardState, depth, maximizingPlayer):
+        #print('\n' + str(boardState) + '\n')
+        num = type*var
 
-        if depth == 0: #cannot have terminal node since only replacing
+        newPos = self.compareBoards(boardState)
+        #print(num)
+        #print(str(num) + ' ' + str(newPos) + " " + self.type)
+        return (num, newPos)
 
-            return self.getHeuristic(boardState), boardState
 
-        if maximizingPlayer:  # you are the current
+    def miniMax(self, boardState, depth, maximizingPlayer, pos):
 
-            bestValue = -1e500
-            branch, positions = self.getBranches(boardState, self.enemy_type)
+        if depth == 0: #cannot have winning node since only replacing
+
+            return self.getHeuristic(boardState, maximizingPlayer)
+
+        if maximizingPlayer:  # self.player
+
+            bestValue = (-1e500, None)
+            branch, positions = self.getBranches(boardState, maximizingPlayer)
             i = 0
 
             for child in branch:
-                currValue, boardState = self.miniMax(child, depth-1, False)
-                #print(str(currValue) + ' ' + str(bestValue))
-                if currValue > bestValue:
+                currValue = self.miniMax(child, depth-1, False, pos)
 
+                if currValue[0] > bestValue[0]:
                     bestValue = currValue
 
-                    newPos = positions[i]
-
-                    #print(" \n" + str(currValue) + ' ' + str(bestValue) + " \n")
                 i += 1
-            #print("\n best value" + str(bestValue) + "\n")
-            return bestValue, boardState
 
-        else:   # opposition - minimising players
+            return bestValue
 
-            bestValue = 1e500
-            branch, positions = self.getBranches(boardState, self.type)
+        else:   # self.enemy - minimizing player
+
+            bestValue = (1e500, None)
+            branch, positions = self.getBranches(boardState, maximizingPlayer)
             i = 0
             for child in branch:
-                currValue, boardState = self.miniMax(child, depth-1, True)
-                if currValue < bestValue:
+                currValue = self.miniMax(child, depth-1, True, pos)
+
+                if currValue[0] < bestValue[0]:
                     bestValue = currValue
-                    newPos = positions[i]
+
                 i += 1
-            return bestValue, boardState
+            return bestValue
 
     def update(self, action):
         if type(action[0]) is int:
