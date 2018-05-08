@@ -16,9 +16,9 @@ April 2018
 
 # HELPERS
 
-WHITE, BLACK, CORNER, EMPTY = ['O','@','X','-']
-ENEMIES = {WHITE: {BLACK, CORNER}, BLACK: {WHITE, CORNER}, CORNER: {}, EMPTY: {}}
-FRIENDS = {WHITE: {WHITE, CORNER}, BLACK: {BLACK, CORNER}, CORNER: {}, EMPTY: {}}
+WHITE, BLACK, CORNER, EMPTY, CLEAR = ['O','@','X','-', " "]
+ENEMIES = {WHITE: {BLACK, CORNER}, BLACK: {WHITE, CORNER}, CORNER: {}, EMPTY: {}, CLEAR: {}}
+FRIENDS = {WHITE: {WHITE, CORNER}, BLACK: {BLACK, CORNER}, CORNER: {}, EMPTY: {}, CLEAR: {}}
 
 FULL_EMPTY = \
 [['X','-','-','-','-','-','-','X'], \
@@ -53,10 +53,10 @@ for i in range(8):
 
 # hard-coded testing
 white_places = []
-for i in range(3,7):
-    for j in range(1,4):
-# for i in range(1, 7):
-#     for j in range(0, 2):
+# for i in range(3,7):
+#     for j in range(1,4):
+for i in range(1, 7):
+    for j in range(0, 2):
         white_places.append((i,j))
 
 
@@ -94,14 +94,15 @@ class Player:
         self.board = Board(FULL_EMPTY, self.type)
         self.placeMode = True
 
-        # self.my_pieces = self.board.white_pieces if self.type == WHITE \
-        # else self.board.black_pieces
-        # self.enemy_pieces = self.board.white_pieces if self.type == BLACK \
-        # else self.board.black_pieces
-
     def action(self, turns):
 
-        print(self.board)
+        # Shrink the board after each player makes 64, then another 32 moves
+        if turns == 127 or turns == 128:
+            self.board.shrink((6, 1), (1, 1), (6, 6), (1, 6))
+
+        if turns == 191 or turns == 192:
+            self.board.shrink((5,2 ), (2, 2), (5, 5), (2, 5))
+
 
         # Not in play mode while in the placing stage
         if self.placeMode:
@@ -122,23 +123,24 @@ class Player:
 
             self.board.makemove(action[0], action[1])
 
+
+
+            for loc in self.board.grid.keys():
+                if self.board.grid[loc] == WHITE or self.board.grid[loc] == BLACK:
+                    for forward, backward in [(UP, DOWN), (LEFT, RIGHT)]:
+                        front_square = step(loc, forward)
+                        back_square  = step(loc, backward)
+                        if self.board.find_piece(front_square) in ENEMIES[self.board.grid[loc]] \
+                        and self.board.find_piece(back_square) in ENEMIES[self.board.grid[loc]]:
+                            self.board.grid[loc] = EMPTY
+                            break
+
+
         print(self.type, action)
         print(self.board)
         return action
 
     def bestmove(self, type, turns):
-        if type == WHITE:
-            if turns == 0:
-                move = ((6,1),(7,1))
-            elif turns == 2:
-                move = ((6,3), (7,3))
-            else:
-                move = ((7,3), (7,2))
-        else:
-            if turns == 1:
-                move = ((7,3),(7,2))
-            else:
-                move = ((7,2),(7,1))
 
         return self.evalstate()
 
@@ -242,14 +244,23 @@ class Board:
         self.grid[pos] = type
 
     # NEED TO COMPLETE
-    def shrink(self, turns):
-        if turns == 128:
-            toDels = [0, 7]
-            newCorners = [(1, 1), (6, 1), (1, 6), (6, 6)]
+    def shrink(self, tr_corner, tl_corner, br_corner, bl_corner):
+        toDel = []
+        for pos in self.grid.keys():
+            if (pos[0] < tl_corner[0]) or (pos[0] > tr_corner[0]) or \
+            (pos[1] > br_corner[1]) or (pos[1] < tr_corner[1]):
+                toDel.append(pos)
 
-        if turns == 192:
-            toDels = [1, 6]
-            newCorners = [(2, 2), (5, 2), (2, 5), (5, 5)]
+        for pos in toDel:
+            self.grid[pos] = CLEAR
+
+        print(toDel)
+
+        self.grid[tr_corner] = CORNER
+        self.grid[tl_corner] = CORNER
+        self.grid[br_corner] = CORNER
+        self.grid[bl_corner] = CORNER
+
 
     def moves(self, pos):
         """
