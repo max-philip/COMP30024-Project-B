@@ -79,13 +79,14 @@ EVAL_WHITE  = [ \
     [ 1,  5,  5,  5,  5,  5,  5, 1], \
     [ 1,  5,  10,  10,  10,  10,  5, 1], \
     [ 1,  5,  10,  15,  15,  10,  5, 1], \
-    [ 1,  5,  10,  10,  10,  10,  5, 1], \
+    [ 1,  5,  10,  10, 10,  10,  5, 1], \
     [ 1,  5,  5,  5,  5,  5,  5, 1], \
     [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
     [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
 ]
 
 EVAL_BLACK = [ \
+
     [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
     [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
     [ 1,  5,  5,  5,  5,  5,  5, 1], \
@@ -136,19 +137,29 @@ class Player:
             self.board.shrink((5, 2), (2, 2), (5, 5), (2, 5))
 
 
-
-
-
         # Not in play mode while in the placing stage
         if self.placeMode:
             if turns < 24:
-                if self.type == WHITE:
-                    action = white_places[turns//2]
-                    self.board.place_piece(action, self.type)
+                    #copy_board = self.board
+                        value = self.miniMaxPlacement(self.board.grid, 2, True, (0,0))
+                        print(value)
+                        print(value[1])
 
-                else:
-                    action = black_places[turns//2]
-                    self.board.place_piece(action, self.type)
+                        if (value[1][0][1] == self.type):
+                            action = value[1][0][0]
+                            print(value[1][0])
+                            print(value[1][0][0])
+                            print(self.playerEval[value[1][0][0][0]][value[1][0][0][1]])
+
+                        else:
+                            action = value[1][1][0]
+                            print(value[1][1])
+                            print(value[1][1][0])
+                            print(self.playerEval[value[1][1][0][0]][value[1][1][0][1]])
+
+
+                        self.board.place_piece(action, self.type)
+
 
             # Switch to move mode if its going first or second
             if turns == 22 or turns == 23:
@@ -178,6 +189,106 @@ class Player:
         return action
 
 
+    def getBranches(self, boardState, maximizingPlayer):
+
+        branch = []
+        positions = []
+        i = 0
+        num = 0
+
+        for count in (boardState):
+            if boardState[count] == EMPTY:
+                num += 1
+
+        # create (max amount of empty positions available) new dictionaries
+        sectionsDict = []
+        for var in range(num):
+           sectionsDict.append(dict())
+
+        # add to new dictionary for all possible new spots
+        for position in boardState:
+
+            if boardState[position] == EMPTY:
+
+                sectionsDict[i] = boardState.copy()
+                if maximizingPlayer:
+                    sectionsDict[i][position] = self.type
+                else:
+                    sectionsDict[i][position] = self.enemy
+                positions.append(position)
+                branch.append(sectionsDict[i])
+
+        return branch, positions
+
+    def compareBoards(self, boardState):
+
+        newPos = []
+        for pos in boardState:
+            if boardState[pos] != self.board.grid[pos]:
+                newPos.append((pos, boardState[pos])) # e.g. ((2,3), '@')
+
+        return newPos
+
+    def getHeuristic(self, boardState, maximizingPlayer):
+
+        var = random.randint(1,1) # determines how much additional randomness
+        newPos = self.compareBoards(boardState)
+
+        if (newPos[0][1] == self.type):
+            multi = 1
+            i = newPos[0][0][0]
+            j = newPos[0][0][1]
+        else:
+            multi = -1
+            i = newPos[1][0][0]
+            j = newPos[1][0][1]
+
+        var *= (multi+float(self.playerEval[j][i]))
+
+        #print('\n' + str(boardState) + '\n')
+        num = var
+
+        newPos = self.compareBoards(boardState)
+        #print(num)
+        #print(str(num) + ' ' + str(newPos) + " " + self.type)
+        return (num, newPos)
+
+
+    def miniMaxPlacement(self, boardState, depth, maximizingPlayer, pos):
+
+        if depth == 0: #cannot have winning node since only replacing
+
+            return self.getHeuristic(boardState, maximizingPlayer)
+
+        if maximizingPlayer:  # self.player
+
+            bestValue = (-1e500, None)
+            branch, positions = self.getBranches(boardState, maximizingPlayer)
+            i = 0
+
+            for child in branch:
+                currValue = self.miniMaxPlacement(child, depth-1, False, pos)
+
+                if currValue[0] > bestValue[0]:
+                    bestValue = currValue
+
+                i += 1
+
+            return bestValue
+
+        else:   # self.enemy - minimizing player
+
+            bestValue = (1e500, None)
+            branch, positions = self.getBranches(boardState, maximizingPlayer)
+            i = 0
+            for child in branch:
+                currValue = self.miniMaxPlacement(child, depth-1, True, pos)
+
+                if currValue[0] < bestValue[0]:
+                    bestValue = currValue
+
+                i += 1
+            return bestValue
     # Heuristic currently defined as being the difference in the number of
     # pieces for each player + average euclidean distances
     def heuristic(self, type):
@@ -194,7 +305,7 @@ class Player:
             for j in enemies:
                 score += self.euclidean_distance(i, j)
 
-        return (len(players) - len(enemies))*5 + score
+        return (len(players) - len(enemies))*5 #+ score
 
 
     def minimax(self, type, is_max, depth):
