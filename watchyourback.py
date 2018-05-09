@@ -1,3 +1,6 @@
+import random
+from collections import defaultdict
+
 """
 Classes for representing a Watch Your Back! game board and the Black and White
 pieces that move around it.
@@ -19,6 +22,7 @@ April 2018
 WHITE, BLACK, CORNER, EMPTY, CLEAR = ['O','@','X','-', " "]
 ENEMIES = {WHITE: {BLACK, CORNER}, BLACK: {WHITE, CORNER}, CORNER: {}, EMPTY: {}, CLEAR: {}}
 FRIENDS = {WHITE: {WHITE, CORNER}, BLACK: {BLACK, CORNER}, CORNER: {}, EMPTY: {}, CLEAR: {}}
+PLAY_ENEMY = {WHITE: BLACK, BLACK: WHITE}
 
 FULL_EMPTY = \
 [['X','-','-','-','-','-','-','X'], \
@@ -69,6 +73,31 @@ for i in range(1,7):
 
 
 
+# evaluation array adapted from chess wiki of Queen evaluation array
+EVAL_WHITE  = [ \
+    [ 0.0001, 1, 1, 1, 1, 1, 1, 0.0001], \
+    [ 1,  5,  5,  5,  5,  5,  5, 1], \
+    [ 1,  5,  10,  10,  10,  10,  5, 1], \
+    [ 1,  5,  10,  15,  15,  10,  5, 1], \
+    [ 1,  5,  10,  10,  10,  10,  5, 1], \
+    [ 1,  5,  5,  5,  5,  5,  5, 1], \
+    [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
+    [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
+]
+
+EVAL_BLACK = [ \
+    [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
+    [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
+    [ 1,  5,  5,  5,  5,  5,  5, 1], \
+    [ 1,  5,  10,  10,  10,  10,  5, 1], \
+    [ 1,  5,  10,  15,  15,  10,  5, 1], \
+    [ 1,  5,  10,  10,  10,  10,  5, 1], \
+    [ 1,  5,  5,  5,  5,  5,  5, 1], \
+    [ 0.0001, 1, 1, 1, 1, 1, 1, 0.0001], \
+]
+
+
+
 # ************************ temp placement stuff ************************** #
 
 
@@ -94,6 +123,9 @@ class Player:
         self.board = Board(FULL_EMPTY, self.type)
         self.placeMode = True
 
+        self.playerEval = EVAL_WHITE if colour == "white" else EVAL_BLACK
+        self.enemyEval = EVAL_BLACK if colour == "white" else EVAL_WHITE
+
     def action(self, turns):
 
         # Shrink the board after each player makes 64, then another 32 moves
@@ -101,7 +133,10 @@ class Player:
             self.board.shrink((6, 1), (1, 1), (6, 6), (1, 6))
 
         if turns == 191 or turns == 192:
-            self.board.shrink((5,2 ), (2, 2), (5, 5), (2, 5))
+            self.board.shrink((5, 2), (2, 2), (5, 5), (2, 5))
+
+
+
 
 
         # Not in play mode while in the placing stage
@@ -110,12 +145,15 @@ class Player:
                 if self.type == WHITE:
                     action = white_places[turns//2]
                     self.board.place_piece(action, self.type)
+
                 else:
                     action = black_places[turns//2]
                     self.board.place_piece(action, self.type)
+
             # Switch to move mode if its going first or second
             if turns == 22 or turns == 23:
                 self.placeMode = False
+
 
         # Now in the movement (playing) stage of the game
         else:
@@ -124,44 +162,95 @@ class Player:
             self.board.makemove(action[0], action[1])
 
 
-
-            for loc in self.board.grid.keys():
-                if self.board.grid[loc] == WHITE or self.board.grid[loc] == BLACK:
-                    for forward, backward in [(UP, DOWN), (LEFT, RIGHT)]:
-                        front_square = step(loc, forward)
-                        back_square  = step(loc, backward)
-                        if self.board.find_piece(front_square) in ENEMIES[self.board.grid[loc]] \
-                        and self.board.find_piece(back_square) in ENEMIES[self.board.grid[loc]]:
-                            self.board.grid[loc] = EMPTY
-                            break
+        # check if any playing pieces should be deleted (due to shrinking)
+        for loc in self.board.grid.keys():
+            if self.board.grid[loc] == WHITE or self.board.grid[loc] == BLACK:
+                for forward, backward in [(UP, DOWN), (LEFT, RIGHT)]:
+                    front_square = step(loc, forward)
+                    back_square  = step(loc, backward)
+                    if self.board.find_piece(front_square) in ENEMIES[self.board.grid[loc]] \
+                    and self.board.find_piece(back_square) in ENEMIES[self.board.grid[loc]]:
+                        self.board.grid[loc] = EMPTY
+                        break
 
 
         print(self.type, action)
-        print(self.board)
         return action
+
+
+    # Heuristic currently defined as being the difference in the number of
+    # pieces for each player + average euclidean distances
+    def heuristic(self, type):
+        players = []
+        enemies = []
+        for pos in self.board.grid:
+            if self.board.grid[pos] == type:
+                players.append(pos)
+            elif self.board.grid[pos] in ENEMIES[type]:
+                enemies.append(pos)
+
+        score = 0
+        for i in players:
+            for j in enemies:
+                score += self.euclidean_distance(i, j)
+
+        return (len(players) - len(enemies))*5 + score
+
+
+    def minimax(self, type, is_max, depth):
+
+        scores = defaultdict(int)
+        curr_val = float('inf') if is_max else 0
+        best_move = ()
+
+        for loc in self.board.grid.keys():
+            if self.board.grid[loc] == type:
+                for move in self.board.moves(loc):
+
+                    eliminated_pieces = self.board.makemove(loc, move)
+                    if depth < 2:
+                        score = self.minimax(PLAY_ENEMY[type], not is_max, depth+1)[1]
+                    else:
+                        score = self.heuristic(type)
+
+                    self.board.undomove(loc, type, move, eliminated_pieces)
+                    scores[(loc, move)] = score
+
+                    if is_max:
+                        if score < curr_val:
+                            curr_val = score
+                            best_move = (loc, move)
+                    else:
+                        if score > curr_val:
+                            curr_val = score
+                            best_move = (loc, move)
+
+        return best_move, curr_val
+
 
     def bestmove(self, type, turns):
 
-        return self.evalstate()
 
-    def evalstate(self):
+        return self.minimax(type, True, 0)[0]
+
+        #return self.euclid_states()
+
+    def euclid_states(self):
         best_score = float('inf')       # THIS IS AIDS
-        #for piece in self.my_pieces:
         best_move = ()
-        for loc in self.board.grid:
+        for loc in self.board.grid.keys():
             if self.board.grid[loc] == self.type:
                 if self.board.moves(loc):
                     move, score = self.euclidean(loc)
                     if score < best_score:
                         best_score = score
                         best_move = move
-
+        print(best_score)
         return best_move
 
 
     def euclidean(self, loc):
         min_score = float('inf')           # THIS IS AIDS
-        # print(loc, self.board.moves(loc))
         for newpos in self.board.moves(loc):
             oldtype = self.board.grid[loc]
             eliminated_pieces = self.board.makemove(loc, newpos)
@@ -308,7 +397,6 @@ class Board:
         self.grid[oldpos] = EMPTY
         self.grid[newpos] = my_type
 
-
         # check adjacent squares: did this move eliminate anyone?
         for direction in DIRECTIONS:
             adjacent_square = step(newpos, direction)
@@ -333,7 +421,7 @@ class Board:
                 eliminated_pieces.append(eliminated_piece)
                 break
 
-        #eliminated_pieces.append((oldtype, oldpos))
+        #eliminated_pieces.append((my_type, oldpos))
 
         return eliminated_pieces
 
@@ -353,7 +441,6 @@ class Board:
         # put back the pieces that were eliminated
         for data in eliminated_pieces:
             self.grid[data[1]] = data[0]
-
 
         # undo the move itself
         self.grid[newpos] = EMPTY
