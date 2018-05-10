@@ -137,7 +137,7 @@ class Player:
         if self.placeMode:
             if turns < 24:
 
-                value = self.miniMaxPlacement(self.board.grid, 2, True, True)
+                value = self.miniMaxPlacement(self.board.grid, 2, True, True, 0, 1000000000)
 
                 if (value[1][0][1] == self.type):
                     action = value[1][0][0]
@@ -152,11 +152,9 @@ class Player:
 
         # Now in the movement (playing) stage of the game
         else:
-            value, pos, boardState = self.miniMaxPlacement(self.board.grid, 2, True, False)
-            print("pos = "+ str(pos))
-            #print("board " + str(board))
+            value, pos, boardState = self.miniMaxPlacement(self.board.grid, 2, True, False, -1e500, 1e500)
             action = self.findmove(boardState)
-            #action = self.bestmove(self.type, turns)
+
             self.board.makemove(action[0], action[1])
 
         # check if any playing pieces should be deleted (due to shrinking)
@@ -365,7 +363,7 @@ class Player:
 
             return (num, newPos, copyBoard)
 
-    def miniMaxPlacement(self, boardState, depth, maximizingPlayer, placing):
+    def miniMaxPlacement(self, boardState, depth, maximizingPlayer, placing, alpha, beta):
 
         if depth == 0: #cannot have winning node since only replacing
             if placing:
@@ -373,7 +371,7 @@ class Player:
             else:
                 return self.getHeuristic2(boardState, maximizingPlayer)
 
-        if maximizingPlayer:  # self.player
+        if maximizingPlayer:  # self.player - alpha
             bestValue = (-1e500, None)
             if placing:
                 branch = self.getBranches(boardState, maximizingPlayer)
@@ -382,13 +380,19 @@ class Player:
 
             i = 0
             for child in branch:
-                currValue = self.miniMaxPlacement(child, depth-1, False, placing)
+                currValue = self.miniMaxPlacement(child, depth-1, False, placing, alpha, beta)
                 if currValue[0] > bestValue[0]:
                     bestValue = currValue
-                i += 1
+
+                if bestValue[0] > alpha:
+                    alpha = bestValue[0]
+
+                if beta <= alpha:
+                    break
+
             return bestValue
 
-        else:   # self.enemy - minimizing player
+        else:   # self.enemy - minimizing player - beta
             bestValue = (1e500, None)
             if placing:
                 branch = self.getBranches(boardState, maximizingPlayer)
@@ -397,11 +401,17 @@ class Player:
 
             i = 0
             for child in branch:
-                currValue = self.miniMaxPlacement(child, depth-1, True, placing)
+                currValue = self.miniMaxPlacement(child, depth-1, True, placing, alpha, beta)
 
                 if currValue[0] < bestValue[0]:
                     bestValue = currValue
                 i += 1
+
+                if bestValue[0] < beta:
+                    beta = bestValue[0]
+
+                if beta <= alpha:
+                    break
 
             return bestValue
 
