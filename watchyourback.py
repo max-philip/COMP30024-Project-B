@@ -76,10 +76,10 @@ for i in range(1,7):
 # evaluation array adapted from chess wiki of Queen evaluation array
 EVAL_WHITE  = [ \
     [ 0.0001, 2, 2, 2, 2, 2, 2, 0.0001], \
-    [ 2,  5,  5,  5,  5,  5,  5, 2], \
-    [ 2,  5,  10,  10,  10,  10,  5, 2], \
-    [ 2,  5,  10,  15,  15,  10,  5, 2], \
-    [ 2,  5,  10,  10, 10,  10,  5, 2], \
+    [ 2,  5,  5,  15,  15,  5,  5, 2], \
+    [ 2,  5,  10,  12,  12,  10,  5, 2], \
+    [ 2,  5,  7,  7,  7,  7,  5, 2], \
+    [ 2,  5,  5,  5, 5,  5,  5, 2], \
     [ 2,  5,  5,  5,  5,  5,  5, 2], \
     [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
     [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
@@ -90,10 +90,10 @@ EVAL_BLACK = [ \
     [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
     [ 0.0001,  0.0001, 0.0001,  0.0001,  0.0001,  0.0001,  0.0001, 0.0001], \
     [ 2,  5,  5,  5,  5,  5,  5, 2], \
-    [ 2,  5,  10,  10,  10,  10,  5, 2], \
-    [ 2,  5,  10,  15,  15,  10,  5, 2], \
-    [ 2,  5,  10,  10,  10,  10,  5, 2], \
     [ 2,  5,  5,  5,  5,  5,  5, 2], \
+    [ 2,  5,  7,  7,  7,  7,  5, 2], \
+    [ 2,  5,  7,  10,  10,  7,  5, 2], \
+    [ 2,  5,  10,  15,  15,  10,  5, 2], \
     [ 0.0001, 2, 2, 2, 2, 2, 2, 0.0001], \
 ]
 
@@ -140,7 +140,7 @@ class Player:
         if self.placeMode:
             if turns < 24:
 
-                value = self.miniMaxPlacement(self.board.grid, 2, True, (0,0))
+                value = self.miniMaxPlacement(self.board.grid, 2, True)
 
                 if (value[1][0][1] == self.type):
                     action = value[1][0][0]
@@ -216,6 +216,8 @@ class Player:
     # returns how many good and enemy pieces are close enough to kill you
     def findNeighbours(self, x, y):
 
+        # want to check if piece will die
+        avoid = False
         player = 0
         enemy = 0
         locs = [(x+1,y+1), (x-1,y-1), (x,y+1), (x,y-1), \
@@ -228,7 +230,16 @@ class Player:
                     player += 1
                 else:
                     enemy += 1
-        return player, enemy
+
+        #check if you will direction
+        if ((x,y+1) in self.board.grid and (x,y-1) in self.board.grid):
+            if (self.board.grid[(x,y+1)] == self.enemy and self.board.grid[(x,y-1)] == self.enemy):
+                avoid = True
+        elif ((x+1,y) in self.board.grid and (x-1,y) in self.board.grid):
+            if (self.board.grid[(x+1, y)] == self.enemy and self.board.grid[(x-1, y)] == self.enemy):
+                avoid = True
+
+        return player, enemy, avoid
 
     # finds heuristic value of position in board
     def getHeuristic(self, boardState, maximizingPlayer):
@@ -244,13 +255,16 @@ class Player:
             x = newPos[1][0][0]
             y = newPos[1][0][1]
 
-        player, enemy = self.findNeighbours(x, y)
+        player, enemy, avoid = self.findNeighbours(x, y)
         num = (float(self.playerEval[y][x]))+(DEF*(player-enemy))
+
+        if avoid:
+            num *= 1000
 
         return (num, newPos)
 
 
-    def miniMaxPlacement(self, boardState, depth, maximizingPlayer, pos):
+    def miniMaxPlacement(self, boardState, depth, maximizingPlayer):
 
         if depth == 0: #cannot have winning node since only replacing
             return self.getHeuristic(boardState, maximizingPlayer)
@@ -261,11 +275,10 @@ class Player:
 
             i = 0
             for child in branch:
-                currValue = self.miniMaxPlacement(child, depth-1, False, pos)
+                currValue = self.miniMaxPlacement(child, depth-1, False)
                 if currValue[0] > bestValue[0]:
                     bestValue = currValue
                 i += 1
-
             return bestValue
 
         else:   # self.enemy - minimizing player
@@ -274,7 +287,7 @@ class Player:
 
             i = 0
             for child in branch:
-                currValue = self.miniMaxPlacement(child, depth-1, True, pos)
+                currValue = self.miniMaxPlacement(child, depth-1, True)
                 if currValue[0] < bestValue[0]:
                     bestValue = currValue
                 i += 1
