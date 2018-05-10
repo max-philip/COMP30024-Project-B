@@ -232,9 +232,6 @@ class Player:
             j = newPos[1][0][1]
 
         num = (float(self.playerEval[j][i]))*rand
-
-        newPos = self.compareBoards(boardState)
-
         return (num, newPos)
 
 

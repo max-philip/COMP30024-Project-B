@@ -136,7 +136,6 @@ class Player:
         if turns == 191 or turns == 192:
             self.board.shrink((5, 2), (2, 2), (5, 5), (2, 5))
 
-
         # Not in play mode while in the placing stage
         if self.placeMode:
             if turns < 24:
@@ -150,18 +149,14 @@ class Player:
 
                 self.board.place_piece(action, self.type)
 
-
             # Switch to move mode if its going first or second
             if turns == 22 or turns == 23:
                 self.placeMode = False
 
-
         # Now in the movement (playing) stage of the game
         else:
             action = self.bestmove(self.type, turns)
-
             self.board.makemove(action[0], action[1])
-
 
         # check if any playing pieces should be deleted (due to shrinking)
         for loc in self.board.grid.keys():
@@ -173,12 +168,12 @@ class Player:
                     and self.board.find_piece(back_square) in ENEMIES[self.board.grid[loc]]:
                         self.board.grid[loc] = EMPTY
                         break
-
-
         print(self.type, action)
         return action
 
-
+    # gets all branches of the subtree
+    # returns an array of all the possible branches
+    # and the position of the new piece
     def getBranches(self, boardState, maximizingPlayer):
 
         branch = []
@@ -186,6 +181,7 @@ class Player:
         i = 0
         num = 0
 
+        # create empty dictionaries for all possible boards
         for count in (boardState):
             if boardState[count] == EMPTY:
                 num += 1
@@ -197,9 +193,7 @@ class Player:
 
         # add to new dictionary for all possible new spots
         for position in boardState:
-
             if boardState[position] == EMPTY:
-
                 sectionsDict[i] = boardState.copy()
                 if maximizingPlayer:
                     sectionsDict[i][position] = self.type
@@ -210,30 +204,48 @@ class Player:
 
         return branch, positions
 
+    # determines which is the current piece in question
     def compareBoards(self, boardState):
 
         newPos = []
         for pos in boardState:
             if boardState[pos] != self.board.grid[pos]:
                 newPos.append((pos, boardState[pos])) # e.g. ((2,3), '@')
-
         return newPos
 
+    # returns how many good and enemy pieces are close enough to kill you
+    def findNeighbours(self, x, y):
+
+        player = 0
+        enemy = 0
+        locs = [(x+1,y+1), (x-1,y-1), (x,y+1), (x,y-1), \
+                (x+1,y), (x-1,y), (x-1,y+1), (x+1,y-1), \
+                (x+2,y), (x-2,y), (x, y+2), (x,y-2)]
+
+        for pos in self.board.grid:
+            if (pos in locs):
+                if self.board.grid[pos] == self.type:
+                    player += 1
+                else:
+                    enemy += 1
+        return player, enemy
+
+    # finds heuristic value of position in board
     def getHeuristic(self, boardState, maximizingPlayer):
 
-        rand = random.randint(1,1) # determines how much additional randomness
+        DEF = 2 # the players risk aversion
+
         newPos = self.compareBoards(boardState)
 
         if (newPos[0][1] == self.type):
-            i = newPos[0][0][0]
-            j = newPos[0][0][1]
+            x = newPos[0][0][0]
+            y = newPos[0][0][1]
         else:
-            i = newPos[1][0][0]
-            j = newPos[1][0][1]
+            x = newPos[1][0][0]
+            y = newPos[1][0][1]
 
-        num = (float(self.playerEval[j][i]))*rand
-
-        newPos = self.compareBoards(boardState)
+        player, enemy = self.findNeighbours(x, y)
+        num = (float(self.playerEval[y][x]))+(DEF*(player-enemy))
 
         return (num, newPos)
 
@@ -268,10 +280,11 @@ class Player:
                 i += 1
 
             return bestValue
-            
+
     # Heuristic currently defined as being the difference in the number of
     # pieces for each player + average euclidean distances
     def heuristic(self, type):
+
         players = []
         enemies = []
         for pos in self.board.grid:
@@ -318,12 +331,9 @@ class Player:
 
         return best_move, curr_val
 
-
     def bestmove(self, type, turns):
 
-
         return self.minimax(type, True, 0)[0]
-
         #return self.euclid_states()
 
     def euclid_states(self):
@@ -338,7 +348,6 @@ class Player:
                         best_move = move
         print(best_score)
         return best_move
-
 
     def euclidean(self, loc):
         min_score = float('inf')           # THIS IS AIDS
@@ -371,7 +380,6 @@ class Player:
             return ((loc, best_move), min_score)
         else:
             return None
-
 
     def euclidean_distance(self, pos1, pos2):
         return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
