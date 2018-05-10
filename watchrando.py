@@ -187,8 +187,6 @@ class Player:
                         self.board.grid[loc] = EMPTY
                         break
 
-
-        print(self.type, action)
         return action
 
 
@@ -217,7 +215,7 @@ class Player:
     #     return val
 
     def heuristic(self, state):
-        
+
 
         # play_eval = random.randint(1, 10000)
         #return kill_diff + play_eval + weak_points
@@ -260,7 +258,7 @@ class Player:
         best_val = self.max_value(node, depth)
 
         successors = self.getSuccessors(node)
-        print ("MiniMax:  Utility Value of Root Node: = " + str(best_val))
+        #print ("MiniMax:  Utility Value of Root Node: = " + str(best_val))
 
         if successors:
             best_move = successors[0][0]
@@ -316,7 +314,7 @@ class Player:
         new_state, move = self.minimax(self.board.grid, 0)
         if (new_state, move) == (None, None):
             return None, None
-        print(new_state)
+        #print(new_state)
 
         for loc in self.board.grid.keys():
             if self.board.grid[loc] == self.type:
@@ -339,7 +337,7 @@ class Player:
                     if score < best_score:
                         best_score = score
                         best_move = move
-        print(best_score)
+        #print(best_score)
         return best_move
 
 
@@ -437,7 +435,7 @@ class Board:
         for pos in toDel:
             self.grid[pos] = CLEAR
 
-        print(toDel)
+        #print(toDel)
 
         self.grid[tr_corner] = CORNER
         self.grid[tl_corner] = CORNER
