@@ -98,10 +98,7 @@ EVAL_BLACK = [ \
 ]
 
 
-
 # ************************ temp placement stuff ************************** #
-
-
 
 
 DIRECTIONS = UP, DOWN, LEFT, RIGHT = (0, -1), (0, 1), (-1, 0), (1, 0)
@@ -140,7 +137,7 @@ class Player:
         if self.placeMode:
             if turns < 24:
 
-                value = self.miniMaxPlacement(self.board.grid, 2, True)
+                value = self.miniMaxPlacement(self.board.grid, 2, True, True)
 
                 if (value[1][0][1] == self.type):
                     action = value[1][0][0]
@@ -155,7 +152,11 @@ class Player:
 
         # Now in the movement (playing) stage of the game
         else:
-            action = self.bestmove(self.type, turns)
+            value, pos, boardState = self.miniMaxPlacement(self.board.grid, 2, True, False)
+            print("pos = "+ str(pos))
+            #print("board " + str(board))
+            action = self.findmove(boardState)
+            #action = self.bestmove(self.type, turns)
             self.board.makemove(action[0], action[1])
 
         # check if any playing pieces should be deleted (due to shrinking)
@@ -177,7 +178,6 @@ class Player:
     def getBranches(self, boardState, maximizingPlayer):
 
         branch = []
-        positions = []
         i = 0
         num = 0
 
@@ -199,12 +199,77 @@ class Player:
                     sectionsDict[i][position] = self.type
                 else:
                     sectionsDict[i][position] = self.enemy
-                positions.append(position)
                 branch.append(sectionsDict[i])
+                i += 1
+        return branch
 
-        return branch, positions
+    # may not work because using a 2nd move not in actual board
+    def getBranchesMoves(self, boardState, maximizingPlayer):
+
+        positions = []
+        allMoves = []
+        branch = []
+        sectionsDict = []
+
+        # find all the possible moves
+        for ogPos in boardState:
+
+            if (maximizingPlayer and boardState[ogPos] == self.type):
+                    moves = self.board.moves(ogPos)
+                    if moves:
+                        positions.append((maximizingPlayer, ogPos, moves))
+
+            if (not maximizingPlayer and boardState[ogPos] == self.enemy):
+                    moves = self.board.moves(ogPos)
+                    if moves:
+                        positions.append((not maximizingPlayer, ogPos, moves))
+
+        # pos is array of arrays
+        for i in range(len(positions)):
+            for j in range(len(positions[i][2])):
+                allMoves.append((positions[i][1],(positions[i][2][j]))) # amount of moves available
+
+        # create (max amount of empty positions available) new dictionaries
+        for var in range(len(allMoves)):
+           sectionsDict.append(dict())
+
+        for i in range(len(allMoves)):
+            sectionsDict[i] = boardState.copy()
+            # need to make original move empty
+            if maximizingPlayer:
+                #print(sectionsDict[i][allMoves[i][1]])
+                sectionsDict[i][allMoves[i][1]] = self.type
+            else:
+                sectionsDict[i][allMoves[i][1]] = self.enemy
+            sectionsDict[i][allMoves[i][0]] = EMPTY
+            branch.append(sectionsDict[i])
+
+        return branch
+    # want to return branches
 
     # determines which is the current piece in question
+    def findmove(self, boardState):
+
+        action = None
+        new = None
+        old = None
+
+        for pos in boardState:
+            if boardState[pos] != self.board.grid[pos]:
+                if boardState[pos] == EMPTY and self.board.grid[pos] == self.type:
+                    old = pos
+                elif boardState[pos] == self.type and self.board.grid[pos] == EMPTY:
+                    new = pos
+
+        if not new: # both players want to move to the same spot
+            for pos in boardState:
+                if boardState[pos] != self.board.grid[pos]:
+                    if boardState[pos] == self.enemy and self.board.grid[pos] == EMPTY:
+                        new = pos
+
+        action = (old, new)
+        return action
+
     def compareBoards(self, boardState):
 
         newPos = []
@@ -218,6 +283,7 @@ class Player:
 
         # want to check if piece will die
         avoid = False
+        kill = False
         player = 0
         enemy = 0
         locs = [(x+1,y+1), (x-1,y-1), (x,y+1), (x,y-1), \
@@ -231,15 +297,19 @@ class Player:
                 else:
                     enemy += 1
 
-        #check if you will direction
+        #check if you will die in both directions
         if ((x,y+1) in self.board.grid and (x,y-1) in self.board.grid):
             if (self.board.grid[(x,y+1)] == self.enemy and self.board.grid[(x,y-1)] == self.enemy):
                 avoid = True
+            elif (self.board.grid[(x,y+1)] == self.enemy and self.board.grid[(x,y-1)] == self.enemy):
+                kill = True
         elif ((x+1,y) in self.board.grid and (x-1,y) in self.board.grid):
             if (self.board.grid[(x+1, y)] == self.enemy and self.board.grid[(x-1, y)] == self.enemy):
                 avoid = True
+            elif (self.board.grid[(x+1, y)] == self.enemy and self.board.grid[(x-1, y)] == self.enemy):
+                kill = True
 
-        return player, enemy, avoid
+        return player, enemy, avoid, kill
 
     # finds heuristic value of position in board
     def getHeuristic(self, boardState, maximizingPlayer):
@@ -248,6 +318,8 @@ class Player:
 
         newPos = self.compareBoards(boardState)
 
+        copyBoard = boardState.copy()
+
         if (newPos[0][1] == self.type):
             x = newPos[0][0][0]
             y = newPos[0][0][1]
@@ -255,27 +327,62 @@ class Player:
             x = newPos[1][0][0]
             y = newPos[1][0][1]
 
-        player, enemy, avoid = self.findNeighbours(x, y)
+        player, enemy, avoid, kill = self.findNeighbours(x, y)
         num = (float(self.playerEval[y][x]))+(DEF*(player-enemy))
 
-        if avoid:
+        if avoid: # avoid getting killed
             num *= 1000
 
-        return (num, newPos)
+        elif kill: # kill the other player if you can
+            num /= 1000
 
+        return (num, newPos, copyBoard)
 
-    def miniMaxPlacement(self, boardState, depth, maximizingPlayer):
+    # finds heuristic value of position in board
+    def getHeuristic2(self, boardState, maximizingPlayer):
+
+            DEF = -0.5 # the players risk aversion
+
+            newPos = self.compareBoards(boardState)
+
+            copyBoard = boardState.copy()
+
+            if (newPos[0][1] == self.type):
+                x = newPos[0][0][0]
+                y = newPos[0][0][1]
+            else:
+                x = newPos[1][0][0]
+                y = newPos[1][0][1]
+
+            player, enemy, avoid, kill = self.findNeighbours(x, y)
+            num = (float(self.playerEval[y][x]))+(DEF*(player-enemy))
+
+            if avoid: # avoid getting killed
+                num *= 1000
+
+            elif kill: # kill the other player if you can
+                num /= 1000
+
+            return (num, newPos, copyBoard)
+
+    def miniMaxPlacement(self, boardState, depth, maximizingPlayer, placing):
 
         if depth == 0: #cannot have winning node since only replacing
-            return self.getHeuristic(boardState, maximizingPlayer)
+            if placing:
+                return self.getHeuristic(boardState, maximizingPlayer)
+            else:
+                return self.getHeuristic2(boardState, maximizingPlayer)
 
         if maximizingPlayer:  # self.player
             bestValue = (-1e500, None)
-            branch, positions = self.getBranches(boardState, maximizingPlayer)
+            if placing:
+                branch = self.getBranches(boardState, maximizingPlayer)
+            elif not placing:
+                branch = self.getBranchesMoves(boardState, maximizingPlayer)
 
             i = 0
             for child in branch:
-                currValue = self.miniMaxPlacement(child, depth-1, False)
+                currValue = self.miniMaxPlacement(child, depth-1, False, placing)
                 if currValue[0] > bestValue[0]:
                     bestValue = currValue
                 i += 1
@@ -283,11 +390,15 @@ class Player:
 
         else:   # self.enemy - minimizing player
             bestValue = (1e500, None)
-            branch, positions = self.getBranches(boardState, maximizingPlayer)
+            if placing:
+                branch = self.getBranches(boardState, maximizingPlayer)
+            elif not placing:
+                branch = self.getBranchesMoves(boardState, maximizingPlayer)
 
             i = 0
             for child in branch:
-                currValue = self.miniMaxPlacement(child, depth-1, True)
+                currValue = self.miniMaxPlacement(child, depth-1, True, placing)
+
                 if currValue[0] < bestValue[0]:
                     bestValue = currValue
                 i += 1
@@ -312,42 +423,6 @@ class Player:
                 score += self.euclidean_distance(i, j)
 
         return (len(players) - len(enemies))*5 #+ score
-
-
-    def minimax(self, type, is_max, depth):
-
-        scores = defaultdict(int)
-        curr_val = float('inf') if is_max else 0
-        best_move = ()
-
-        for loc in self.board.grid.keys():
-            if self.board.grid[loc] == type:
-                for move in self.board.moves(loc):
-
-                    eliminated_pieces = self.board.makemove(loc, move)
-                    if depth < 2:
-                        score = self.minimax(PLAY_ENEMY[type], not is_max, depth+1)[1]
-                    else:
-                        score = self.heuristic(type)
-
-                    self.board.undomove(loc, type, move, eliminated_pieces)
-                    scores[(loc, move)] = score
-
-                    if is_max:
-                        if score < curr_val:
-                            curr_val = score
-                            best_move = (loc, move)
-                    else:
-                        if score > curr_val:
-                            curr_val = score
-                            best_move = (loc, move)
-
-        return best_move, curr_val
-
-    def bestmove(self, type, turns):
-
-        return self.minimax(type, True, 0)[0]
-        #return self.euclid_states()
 
     def euclid_states(self):
         best_score = float('inf')       # THIS IS AIDS
@@ -479,6 +554,7 @@ class Board:
             #     print((adjacent_square, self.board.grid[adjacent_square].type))
 
             if self.find_piece(adjacent_square) == EMPTY:
+
                 possible_moves.append(adjacent_square)
                 continue # a jump move is not possible in this direction
 
@@ -486,6 +562,7 @@ class Board:
             opposite_square = step(adjacent_square, direction)
             if self.find_piece(opposite_square) == EMPTY:
                 possible_moves.append(opposite_square)
+        #print(possible_moves)
         return possible_moves
 
     def makemove(self, oldpos, newpos):
