@@ -1,29 +1,29 @@
-import random
-from collections import defaultdict
-
 """
-Classes for representing a Watch Your Back! game board and the Black and White
-pieces that move around it.
+A Python program that plays a complete game of Watch Your Back!, for Part B
+of the Artificial Intelligence (COMP30024) subject.
 
-Created for the tasks of finding legal moves and applying them to the board.
-Also allows moves to be 'undone'.
+Contains a class that represents the board of a game of Watch Your Back!, and a
+class that represents each players' actions and handles updates to their local
+game states.
 
-Does not contain any logic to check for errors: all the functions and methods
-assume that they will be used correctly (with the correct order and with the
-correct input values). Otherwise the behaviour is not defined.
+Determines subsequent moves using the Minimax algorithm alongside Alpha-beta
+pruning. Calculates state values using a heuristic.
 
+Board class code (methods for making moves and undoing moves) was adapted from
+the sample solution to Project: Part A, provided by Matt Farrugia.
 
-Author: Matt Farrugia <matt.farrugia@unimelb.edu.au>
-April 2018
+Authors: Max Philip (836472), Myles Adams (761125)
+May 2018
 """
 
 # HELPERS
-
 WHITE, BLACK, CORNER, EMPTY, CLEAR = ['O','@','X','-', " "]
 ENEMIES = {WHITE: {BLACK, CORNER}, BLACK: {WHITE, CORNER}, CORNER: {}, EMPTY: {}, CLEAR: {}}
 FRIENDS = {WHITE: {WHITE, CORNER}, BLACK: {BLACK, CORNER}, CORNER: {}, EMPTY: {}, CLEAR: {}}
 PLAY_ENEMY = {WHITE: BLACK, BLACK: WHITE}
+INFINITY = float('inf')
 
+# For initializing the local game state of the player at turn 0.
 FULL_EMPTY = \
 [['X','-','-','-','-','-','-','X'], \
 ['-','-','-','-','-','-','-','-'], \
@@ -34,12 +34,7 @@ FULL_EMPTY = \
 ['-','-','-','-','-','-','-','-'], \
 ['X','-','-','-','-','-','-','X']]
 
-
-
-
-# ************************ temp placement stuff ************************** #
-
-# all possible placements for white and black players
+# Store the possible coordinates of white and black pieces' starting zones
 white_poss_placements = []
 for i in range(8):
     for j in range(6):
@@ -54,23 +49,7 @@ for i in range(8):
         if (pos != (0, 7)) and (pos != (7, 7)):
             black_poss_placements.append(pos)
 
-
-# hard-coded testing
-white_places = []
-# for i in range(3,7):
-#     for j in range(1,4):
-for i in range(1, 7):
-    for j in range(0, 2):
-        white_places.append((i,j))
-
-
-black_places = []
-for i in range(1,7):
-    for j in range(6,8):
-        black_places.append((i,j))
-# black_places.append((6,6))
-# black_places.append((7,3))
-
+START_ZONE = {WHITE: white_poss_placements, BLACK: black_poss_placements}
 
 
 # evaluation array adapted from chess wiki of Queen evaluation array
@@ -96,6 +75,27 @@ EVAL_BLACK = [ \
     [ 0.0001, 1, 1, 1, 1, 1, 1, 0.0001], \
 ]
 
+EVALPLAY_WHITE  = [ \
+    [ 0.0001, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.0001], \
+    [ 0.01,  5,  5,  5,  5,  5,  5, 0.01], \
+    [ 0.01,  5,  10,  10,  10,  10,  5, 0.01], \
+    [ 0.01,  5,  10,  20,  20,  10,  5, 0.01], \
+    [ 0.01,  5,  10,  15,  15,  10,  5, 0.01], \
+    [ 0.01,  5,  10,  10,  10,  10,  5, 0.01], \
+    [ 0.01,  5,  5,  5,  5,  5,  5, 0.01], \
+    [ 0.0001,  0.01, 0.01,  0.01,  0.01,  0.01,  0.01, 0.0001], \
+]
+
+EVALPLAY_WHITE2  = [ \
+    [ 0, 0,  0, 0,  0,  0, 0, 0], \
+    [ 0, 30, 0, 50, 50, 0, 30, 0], \
+    [ 0, 0,  0, 0,  0,  0, 0, 0], \
+    [ 0, 50, 0, 50, 50, 0, 50, 0], \
+    [ 0, 50, 0, 50, 50, 0, 50, 0], \
+    [ 0, 0,  0, 0,  0,  0, 0, 0], \
+    [ 0, 30, 0, 50, 50, 0, 30, 0], \
+    [ 0,  0, 0, 0,  0,  0, 0, 0], \
+]
 
 
 # ************************ temp placement stuff ************************** #
@@ -122,12 +122,18 @@ class Player:
         self.enemy = BLACK if colour == "white" else WHITE
         self.board = Board(FULL_EMPTY, self.type)
         self.placeMode = True
+        self.depthMax = 2
 
         self.playerEval = EVAL_WHITE if colour == "white" else EVAL_BLACK
         self.enemyEval = EVAL_BLACK if colour == "white" else EVAL_WHITE
 
     def action(self, turns):
-
+        """
+        Calculate the best action for a given game state, using the defined
+        heuristic. Returns a single tuple (e.g. (4,4)) if the game is in
+        the placing phase. Returns a tuple of two tuples (e.g. ((4,4),(4,5)))
+        if the game is in the moving phase.
+        """
         # Shrink the board after each player makes 64, then another 32 moves
         if turns == 127 or turns == 128:
             self.board.shrink((6, 1), (1, 1), (6, 6), (1, 6))
@@ -135,32 +141,35 @@ class Player:
         if turns == 191 or turns == 192:
             self.board.shrink((5, 2), (2, 2), (5, 5), (2, 5))
 
-
+        # NOTe: CAN MAKE MOVE OUT OF SHRINK ZONE??? BUT NOT INTO THE NEW CORNER??
 
 
 
         # Not in play mode while in the placing stage
         if self.placeMode:
             if turns < 24:
-                if self.type == WHITE:
-                    action = white_places[turns//2]
-                    self.board.place_piece(action, self.type)
+                if self.type == WHITE and (turns == 0 or turns == 1):
+                    action = (3,2) if self.board.grid[(3,2)] == EMPTY else (4,2)
+                elif self.type == BLACK and (turns == 0 or turns == 1):
+                    action = (4,5) if self.board.grid[(4,5)] == EMPTY else (3,5)
 
                 else:
-                    action = black_places[turns//2]
-                    self.board.place_piece(action, self.type)
+
+                    action = self.bestmove(self.type, turns, True)
+                self.board.place_piece(action, self.type)
 
             # Switch to move mode if its going first or second
             if turns == 22 or turns == 23:
                 self.placeMode = False
-
+                self.depthMax = 2
 
         # Now in the movement (playing) stage of the game
         else:
-            action = self.bestmove(self.type, turns)
-
-            self.board.makemove(action[0], action[1])
-
+            action = self.bestmove(self.type, turns, False)
+            if action != (None, None):
+                self.board.makemove(action[0], action[1])
+            else:
+                return None
 
         # check if any playing pieces should be deleted (due to shrinking)
         for loc in self.board.grid.keys():
@@ -173,70 +182,174 @@ class Player:
                         self.board.grid[loc] = EMPTY
                         break
 
-
-        print(self.type, action)
         return action
 
-
-    # Heuristic currently defined as being the difference in the number of
-    # pieces for each player + average euclidean distances
-    def heuristic(self, type):
+    def heuristic(self, state):
+        """
+        Calculate the value of a board state.
+        """
+        play_eval = 0
+        euc_score = 0
+        too_back = 0
         players = []
         enemies = []
-        for pos in self.board.grid:
-            if self.board.grid[pos] == type:
-                players.append(pos)
-            elif self.board.grid[pos] in ENEMIES[type]:
-                enemies.append(pos)
 
-        score = 0
-        for i in players:
-            for j in enemies:
-                score += self.euclidean_distance(i, j)
+        for loc in state:
+            if state[loc] == self.type:
+                if self.placeMode:
+                    if (self.type == WHITE):
+                        play_eval += EVAL_WHITE[loc[1]][loc[0]]
+                    else:
+                        play_eval += EVAL_BLACK[loc[1]][loc[0]]
+                else:
+                    play_eval += EVALPLAY_WHITE2[loc[1]][loc[0]]
+                players.append(loc)
+                euc_score += self.euclidean_distance(loc, (3.5, 3.5))
 
-        return (len(players) - len(enemies))*5 + score
+            if state[loc] == self.enemy:
+                enemies.append(loc)
 
+        kill_diff = (len(players) - len(enemies))*1000
+        # play_eval = random.randint(1, 10000)
+        return kill_diff - euc_score #+ 100000000*play_eval#+ weak_points#+ euc_score #+ play_eval
 
-    def minimax(self, type, is_max, depth):
+    def minimax(self, node, depth):
+        """
+        Return the best move a player can make using the minimax algorithm,
+        traversing the game tree to the specified depth. Alpha-beta pruning is
+        used to decrease the total number of nodes traversed, significantly
+        improving time performance without compromising the final output.
+        """
+        alpha = -INFINITY
+        beta = INFINITY
+        best_val = self.max_value(node, alpha, beta, depth)
 
-        scores = defaultdict(int)
-        curr_val = float('inf') if is_max else 0
-        best_move = ()
+        successors = self.getSuccPlacement(node) if self.placeMode else \
+        self.getSuccessors(node)
 
+        # Return (None, None) to represent the forfeiture of a move if there is
+        # no available move to make.
+        if successors:
+            best_move = successors[0][0]
+            move = successors[0][1]
+        else:
+            return None, None
+
+        for elem in successors:
+            if self.heuristic(elem[0]) == best_val:
+                best_move = elem[0]
+                move = elem[1]
+                break
+
+        return best_move, move
+
+    def max_value(self, node, alpha, beta, depth):
+        if depth > self.depthMax:
+            return self.heuristic(node)
+
+        max_value = -INFINITY
+        successors_states = self.getSuccPlacement(node) if self.placeMode else \
+        self.getSuccessors(node)
+        for state in successors_states:
+            max_value = max(max_value, self.min_value(state[0], alpha, beta, depth+1))
+            alpha = max(alpha, max_value)
+            if (beta <= alpha):
+                break
+        return max_value
+
+    def min_value(self, node, alpha, beta, depth):
+        if depth > self.depthMax:
+            return self.heuristic(node)
+
+        min_value = INFINITY
+        successors_states = self.getSuccPlacement(node) if self.placeMode \
+        else self.getSuccessors(node)
+        for state in successors_states:
+            min_value = min(min_value, self.max_value(state[0], alpha, beta, depth+1))
+            beta = min(beta, min_value)
+            if (beta <= alpha):
+                break
+        return min_value
+
+    def getSuccessors(self, node):
+        assert node is not None
+        states = []
         for loc in self.board.grid.keys():
-            if self.board.grid[loc] == type:
+            if self.board.grid[loc] == self.type:
                 for move in self.board.moves(loc):
+                    elims = self.board.makemove(loc, move)
+                    states.append((self.board.grid.copy(), move))
+                    self.board.undomove(loc, self.type, move, elims)
+        return states
 
-                    eliminated_pieces = self.board.makemove(loc, move)
-                    if depth < 2:
-                        score = self.minimax(PLAY_ENEMY[type], not is_max, depth+1)[1]
-                    else:
-                        score = self.heuristic(type)
+    def getSuccPlacement(self, node):
+        assert node is not None
+        states = []
+        for loc in self.board.grid.keys():
+            # if self.board.grid[loc] == self.enemy:
+            #     for move in self.board.moves(loc):
+            #         if move in START_ZONE[self.type]:
+            #             elims = self.board.place_piece(move, self.type)
+            #             states.append((self.board.grid.copy(), move))
+            #             self.board.undomove(loc, self.enemy, move, elims)
 
-                    self.board.undomove(loc, type, move, eliminated_pieces)
-                    scores[(loc, move)] = score
+            if self.board.grid[loc] == EMPTY and loc in START_ZONE[self.type] \
+            and not self.findNeighbours(loc[1], loc[0]):
 
-                    if is_max:
-                        if score < curr_val:
-                            curr_val = score
-                            best_move = (loc, move)
-                    else:
-                        if score > curr_val:
-                            curr_val = score
-                            best_move = (loc, move)
+                elims = self.board.place_piece(loc, self.type)
+                states.append((self.board.grid.copy(), loc))
+                #self.board.undomove(loc, self.enemy, loc, elims)
+                for data in elims:
+                    self.board.grid[data[1]] = data[0]
 
-        return best_move, curr_val
+                # undo the move itself
+                self.board.grid[loc] = EMPTY
+                #self.grid[oldpos] = oldtype
+
+        return states
+
+    def findNeighbours(self, x, y):
+
+        # want to check if piece will die
+        avoid = False
 
 
-    def bestmove(self, type, turns):
+        left = (x-1, y)
+        right = (x+1, y)
+        up = (x, y-1)
+        down = (x, y+1)
 
+        #check if you will die in both directions
+        if (down in self.board.grid and up in self.board.grid):
+            if (self.board.grid[up] == self.enemy and self.board.grid[down] == EMPTY \
+            or self.board.grid[down] == self.enemy and self.board.grid[up] == EMPTY):
+                avoid = True
+        if (right in self.board.grid and left in self.board.grid):
+            if (self.board.grid[right] == self.enemy and self.board.grid[left] == EMPTY \
+            or self.board.grid[left] == self.enemy and self.board.grid[right] == EMPTY):
+                avoid = True
 
-        return self.minimax(type, True, 0)[0]
+        return avoid
 
-        #return self.euclid_states()
+    def bestmove(self, type, turns, placeMode):
+
+        if placeMode:
+            return self.minimax(self.board.grid, 0)[1]
+        else:
+
+            new_state, move = self.minimax(self.board.grid, 0)
+            if (new_state, move) == (None, None):
+                return None, None
+
+            for loc in self.board.grid.keys():
+                if self.board.grid[loc] == self.type:
+                    if new_state[loc] == EMPTY:
+                        start = loc
+
+            return start, move
 
     def euclid_states(self):
-        best_score = float('inf')       # THIS IS AIDS
+        best_score = INFINITY
         best_move = ()
         for loc in self.board.grid.keys():
             if self.board.grid[loc] == self.type:
@@ -245,12 +358,10 @@ class Player:
                     if score < best_score:
                         best_score = score
                         best_move = move
-        print(best_score)
         return best_move
 
-
     def euclidean(self, loc):
-        min_score = float('inf')           # THIS IS AIDS
+        min_score = INFINITY
         for newpos in self.board.moves(loc):
             oldtype = self.board.grid[loc]
             eliminated_pieces = self.board.makemove(loc, newpos)
@@ -281,27 +392,27 @@ class Player:
         else:
             return None
 
-
     def euclidean_distance(self, pos1, pos2):
         return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
 
     def update(self, action):
-        if type(action[0]) is int:
-            self.board.place_piece(action, self.enemy)
-        else:
-            self.board.makemove(action[0], action[1])
+        if action:
+            if type(action[0]) is int:
+                self.board.place_piece(action, self.enemy)
+            else:
+                self.board.makemove(action[0], action[1])
 
 
 class Board:
     """
     A class to represent a Watch Your Back! board, keeping track of the pieces
-    on the board (in `whites` and `blacks` lists) and the state of each board
-    square (in `grid` dictionary, indexed by `(x, y)` tuples).
+    on the board in the `grid` dictionary. (x, y) coordinates of the pieces are
+    used as the `grid` keys.
     """
     def __init__(self, data, player):
         """
         Create a new board based on a nested list of characters representing
-        an initial board configuration (`data`).
+        an initial board configuration, which is empty.
         """
         self.size = len(data)
         self.player = player
@@ -312,51 +423,50 @@ class Board:
                 self.grid[x, y] = char
 
     def __str__(self):
-        """Compute a string representation of the board's current state."""
-        ran = range(self.size)
-        return 'local board\n' + '\n'.join(' '.join(self.grid[x,y] for x in ran) for y in ran) +'\n\n'
+        """Return a string representation of the board's current state."""
+        size = range(self.size)
+        return 'local board\n' + '\n'.join(' '.join(self.grid[x,y] for x in \
+        size) for y in size) +'\n\n'
 
     def find_piece(self, square):
         """
-        An O(n) operation (n = number of pieces) to find the piece object
-        for the piece occupying a given position on the board. This method
-        could be improved by separately keeping track of which piece is at
-        each position.
+        An O(n) operation (n = number of pieces) to find the type of piece
+        located at the input coordinate, if it exists on the board.
         """
         if square in self.grid:
             return self.grid[square]
 
-    def place_piece(self, pos, type):
-        #new_piece = Piece(type, pos, self)
-        #self.white_pieces.append(new_piece) if type == WHITE else \
-        #self.black_pieces.append(new_piece)
-        self.grid[pos] = type
-
-    # NEED TO COMPLETE
     def shrink(self, tr_corner, tl_corner, br_corner, bl_corner):
-        toDel = []
+        """
+        Reduce the size of the local board representation. Remove all of the
+        pieces aren't on the new board - setting them to the CLEAR (" ") state.
+        """
+        # "Delete" each piece that is outside of the new boundaries
         for pos in self.grid.keys():
             if (pos[0] < tl_corner[0]) or (pos[0] > tr_corner[0]) or \
             (pos[1] > br_corner[1]) or (pos[1] < tr_corner[1]):
-                toDel.append(pos)
+                self.grid[pos] = CLEAR
 
-        for pos in toDel:
-            self.grid[pos] = CLEAR
-
-        print(toDel)
-
+        # Set the new corner locations
         self.grid[tr_corner] = CORNER
         self.grid[tl_corner] = CORNER
         self.grid[br_corner] = CORNER
         self.grid[bl_corner] = CORNER
 
+    def place_piece(self, newpos, my_type):
+        """
+        Place a piece with the input type and position.
+        """
+
+
+        self.grid[newpos] = my_type
+
+        return self.remove_pieces_after_move(newpos, my_type)
 
     def moves(self, pos):
         """
         Compute and return a list of the available moves for this piece based
         on the current board state.
-
-        Do not call with method on pieces with `alive = False`.
         """
 
         possible_moves = []
@@ -379,25 +489,24 @@ class Board:
     def makemove(self, oldpos, newpos):
         """
         Carry out a move from this piece's current position to the position
-        `newpos` (a position from the list returned from the `moves()` method)
-        Update the board including eliminating any nearby pieces surrounded as
-        a result of this move.
+        `newpos` Update the board including eliminating any nearby pieces
+        surrounded as a result of this move.
 
         Return a list of pieces eliminated by this move (to be passed back to
-        the `undomove()` method if you want to reverse this move).
-
-        Do not call with method on pieces with `alive = False`.
+        `undomove()` if the move is to be reversed).
         """
-
-        # eliminate any newly surrounded pieces
-        eliminated_pieces = []
 
         # make the move
         my_type = self.grid[oldpos]
         self.grid[oldpos] = EMPTY
         self.grid[newpos] = my_type
 
-        # check adjacent squares: did this move eliminate anyone?
+        return self.remove_pieces_after_move(newpos, my_type)
+
+    def remove_pieces_after_move(self, newpos, my_type):
+
+        # eliminate any newly surrounded pieces
+        eliminated_pieces = []
         for direction in DIRECTIONS:
             adjacent_square = step(newpos, direction)
             opposite_square = step(adjacent_square, direction)
@@ -421,8 +530,6 @@ class Board:
                 eliminated_pieces.append(eliminated_piece)
                 break
 
-        #eliminated_pieces.append((my_type, oldpos))
-
         return eliminated_pieces
 
     def undomove(self, oldpos, oldtype, newpos, eliminated_pieces):
@@ -432,11 +539,7 @@ class Board:
         restoring the pieces it had eliminated `eliminated_pieces` (a list as
         returned from the `makemove()` method).
 
-        A move should only be 'undone' if no other moves have been made since
-        (unless they have already been 'undone' also).
-
-        Do not call with method on pieces with `alive = False` unless you are
-        undoing the move that eliminated this piece.
+        A move is only be 'undone' if no other moves have been made since.
         """
         # put back the pieces that were eliminated
         for data in eliminated_pieces:
